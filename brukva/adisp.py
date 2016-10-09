@@ -1,5 +1,4 @@
-# -*- coding:utf-8 -*-
-'''
+"""
 Adisp is a library that allows structuring code with asynchronous calls and
 callbacks without defining callbacks as separate functions. The code then
 becomes sequential and easy to read. The library is not a framework by itself
@@ -88,12 +87,13 @@ get all their result for processing at once:
 
 After *all* the asynchronous calls will complete `responses` will be a list of
 responses corresponding to given urls.
-'''
+"""
 from functools import partial
 from tornado.ioloop import IOLoop
 
 class CallbackDispatcher(object):
     def __init__(self, generator):
+        self.call_count = None
         self.io_loop = IOLoop.instance()
         self.g = generator
         try:

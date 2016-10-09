@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 REDIS_COMMANDS = ('QUIT',
                   'AUTH',
                   'EXISTS',
@@ -102,9 +100,9 @@ uncovered_commands = set(REDIS_COMMANDS).difference(covered_commands)
 if __name__ == '__main__':
     if not uncovered_commands:
         exit(0)
-    print 'Uncovered commmands:'
+    print('Uncovered commmands:')
     for c in sorted(uncovered_commands):
-        print '\t%s' % c
-    print 'Commands to cover: %d' % len(uncovered_commands)
-    print 'Already covered: %d' % len(set(REDIS_COMMANDS).intersection(covered_commands))
+        print('\t%s' % c)
+    print('Commands to cover: %d' % len(uncovered_commands))
+    print('Already covered: %d' % len(set(REDIS_COMMANDS).intersection(covered_commands)))
 

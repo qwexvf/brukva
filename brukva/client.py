@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 import socket
 from functools import partial
-from itertools import izip
 import logging
 from collections import Iterable, defaultdict
 import weakref
@@ -9,10 +7,10 @@ import traceback
 
 from tornado.ioloop import IOLoop
 from tornado.iostream import IOStream
-from adisp import async, process
+from brukva.adisp import async, process
 
 from datetime import datetime
-from brukva.exceptions import RequestError, ConnectionError, ResponseError, InvalidResponse
+from brukva.exceptions import RequestError, ConnectionError, ResponseError
 
 log = logging.getLogger('brukva.client')
 
@@ -22,7 +20,8 @@ class ExecutionContext(object):
         self.error_wrapper = error_wrapper
         self.is_active = True
 
-    def _call_callbacks(self, callbacks, value):
+    @staticmethod
+    def _call_callbacks(callbacks, value):
         if callbacks:
             if isinstance(callbacks, Iterable):
                 for cb in callbacks:
@@ -79,16 +78,17 @@ def execution_context(callbacks, error_wrapper=None):
 
     @type callbacks: callable or iterator over callables
     @rtype: context
+    :param error_wrapper:
     """
     return ExecutionContext(callbacks, error_wrapper)
 
 class Message(object):
-    ''' Wrapper Message object.
+    """ Wrapper Message object.
         kind = command
        channel = channel from which the message was received
         pattern = subscription pattern
         body = message body
-    '''
+    """
     def __init__(self, *args):
         if len(args) == 3:
             (self.kind, self.channel, self.body) = args
@@ -118,7 +118,7 @@ def dict_merge(*dicts):
 def encode(value):
     if isinstance(value, str):
         return value
-    elif isinstance(value, unicode):
+    elif isinstance(value, str):
         return value.encode('utf-8')
     # pray and hope
     return str(value)
@@ -131,7 +131,7 @@ def format(*tokens):
     return '*%s\r\n%s' % (len(tokens), ''.join(cmds))
 
 def format_pipeline_request(command_stack):
-    return ''.join(format(c.cmd, *c.args, **c.kwargs) for c in command_stack)
+    return ''.join(format(c.cmd, *c.args) for c in command_stack)
 
 class Connection(object):
     def __init__(self, host, port, on_connect, on_disconnect, timeout=None, io_loop=None):
@@ -155,7 +155,7 @@ class Connection(object):
             sock.connect((self.host, self.port))
             self._stream = IOStream(sock, io_loop=self._io_loop)
             self.connected()
-        except socket.error, e:
+        except socket.error as e:
             raise ConnectionError(str(e))
         self.on_connect()
 
@@ -163,7 +163,7 @@ class Connection(object):
         if self._stream:
             try:
                 self._stream.close()
-            except socket.error, e:
+            except socket.error as e:
                 pass
             self._stream = None
 
@@ -233,7 +233,7 @@ def reply_set(r, *args, **kwargs):
     return set(r)
 
 def reply_dict_from_pairs(r, *args, **kwargs):
-    return dict(izip(r[::2], r[1::2]))
+    return dict(zip(r[::2], r[1::2]))
 
 def reply_str(r, *args, **kwargs):
     return r or ''
@@ -283,13 +283,7 @@ def reply_ttl(r, *args, **kwargs):
     return r != -1 and r or None
 
 
-PUB_SUB_COMMANDS = set([
-    'SUBSCRIBE',
-    'PSUBSCRIBE',
-    'UNSUBSCRIBE',
-    'PUNSUBSCRIBE',
-    'LISTEN',
-])
+PUB_SUB_COMMANDS = {'SUBSCRIBE', 'PSUBSCRIBE', 'UNSUBSCRIBE', 'PUNSUBSCRIBE', 'LISTEN'}
 
 class _AsyncWrapper(object):
     def __init__(self, obj):
@@ -378,13 +372,12 @@ class Client(object):
         if self.subscribed:
             self.subscribed = False
         raise ConnectionError("Socket closed on remote end")
-    ####
 
     #### formatting
     def encode(self, value):
         if isinstance(value, str):
             return value
-        elif isinstance(value, unicode):
+        elif isinstance(value, str):
             return value.encode('utf-8')
         # pray and hope
         return str(value)
@@ -401,7 +394,7 @@ class Client(object):
             return data
         try:
             res =  self.REPLY_MAP[cmd_line.cmd](data, *cmd_line.args, **cmd_line.kwargs)
-        except Exception, e:
+        except Exception as e:
             raise ResponseError(
                 'failed to format reply to %s, raw data: %s; err message: %s' %
                 (cmd_line, data, e), cmd_line
@@ -428,8 +421,8 @@ class Client(object):
                 return
 
             try:
-                self.connection.write(self.format(cmd, *args, **kwargs))
-            except Exception, e:
+                self.connection.write(self.format(cmd, *args))
+            except Exception as e:
                 self.connection.disconnect()
                 raise e
 
@@ -510,7 +503,6 @@ class Client(object):
             else:
                 data = data[:-2]
             ctx.ret_call(data)
-        ####
 
     ### MAINTENANCE
     def bgrewriteaof(self, callbacks=None):
@@ -876,7 +868,7 @@ class Client(object):
         callbacks = callbacks or []
         if not isinstance(callbacks, Iterable):
             callbacks = [callbacks]
-        if isinstance(channels, basestring):
+        if isinstance(channels, str):
             channels = [channels]
         if not self.subscribed:
             callbacks = list(callbacks) + [self.on_subscribed]
@@ -895,7 +887,7 @@ class Client(object):
         callbacks = callbacks or []
         if not isinstance(callbacks, Iterable):
             callbacks = [callbacks]
-        if isinstance(channels, basestring):
+        if isinstance(channels, str):
             channels = [channels]
         callbacks = list(callbacks)
         self.execute_command(cmd, callbacks, *channels)
@@ -991,7 +983,7 @@ class Pipeline(Client):
                 self.command_stack = []
                 self.connection.disconnect()
                 raise ConnectionError("Socket closed on remote end")
-            except Exception, e:
+            except Exception as e:
                 self.command_stack = []
                 self.connection.disconnect()
                 raise e
@@ -1012,7 +1004,7 @@ class Pipeline(Client):
                     else:
                         response = yield self.process_data(data, cmd_line)
                     responses.append(response)
-                except Exception,e :
+                except Exception as e:
                     responses.append(e)
             self.connection.read_done()
 
@@ -1021,7 +1013,7 @@ class Pipeline(Client):
                 for cmd_line, response in zip(cmd_lines, responses):
                     try:
                         results.append(self.format_reply(cmd_line, response))
-                    except Exception, e:
+                    except Exception as e:
                         results.append(e)
                 return results
 
